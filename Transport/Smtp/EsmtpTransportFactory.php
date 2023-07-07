@@ -64,6 +64,10 @@ final class EsmtpTransportFactory extends AbstractTransportFactory
             $transport->setPingThreshold((int) $pingThreshold);
         }
 
+        if ('starttls' === $dsn->getOption('encryption')) {
+            $transport->setStartTls(true);
+        }
+
         return $transport;
     }
 
