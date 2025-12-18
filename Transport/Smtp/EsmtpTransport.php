@@ -34,6 +34,7 @@ class EsmtpTransport extends SmtpTransport
     private array $capabilities;
     private bool $autoTls = true;
     private bool $requireTls = false;
+    private bool $startTls = false;
 
     public function __construct(string $host = 'localhost', int $port = 0, ?bool $tls = null, ?EventDispatcherInterface $dispatcher = null, ?LoggerInterface $logger = null, ?AbstractStream $stream = null, ?array $authenticators = null)
     {
@@ -132,6 +133,22 @@ class EsmtpTransport extends SmtpTransport
         return $this->requireTls;
     }
 
+    /**
+     * @return $this
+     */
+    public function setStartTls(bool $startTls): static
+    {
+        /** @var SocketStream $stream */
+        $stream = $this->getStream();
+        if ($startTls === true && $stream->isTls()) {
+            throw new TransportException('Cannot activate STARTTLS after TLS was activated.');
+        }
+
+        $this->startTls = $startTls;
+
+        return $this;
+    }
+
     public function setAuthenticators(array $authenticators): void
     {
         $this->authenticators = [];
@@ -173,13 +190,20 @@ class EsmtpTransport extends SmtpTransport
 
         $this->capabilities = $this->parseCapabilities($response);
 
+        $supportsStartTls = \array_key_exists('STARTTLS', $this->capabilities);
+
+        if ($this->startTls && !$supportsStartTls) {
+            throw new TransportException('STARTTLS support is not available on this SMTP server.');
+        }
+
         /** @var SocketStream $stream */
         $stream = $this->getStream();
         $tlsStarted = $stream->isTls();
         // WARNING: !$stream->isTLS() is right, 100% sure :)
         // if you think that the ! should be removed, read the code again
         // if doing so "fixes" your issue then it probably means your SMTP server behaves incorrectly or is wrongly configured
-        if ($this->autoTls && !$stream->isTLS() && \defined('OPENSSL_VERSION_NUMBER') && \array_key_exists('STARTTLS', $this->capabilities)) {
+        if ($this->startTls === true ||
+            ($this->autoTls && !$stream->isTLS() && \defined('OPENSSL_VERSION_NUMBER') && \array_key_exists('STARTTLS', $this->capabilities))) {
             $this->executeCommand("STARTTLS\r\n", [220]);
 
             if (!$stream->startTLS()) {
